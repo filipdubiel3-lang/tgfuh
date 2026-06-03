@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GameHub</title>
+<link rel="stylesheet" href="css/main.css">
+</head>
+<body>
+
+<!-- ── Password Gate ──────────────────────────────────────── -->
+<div id="gate" class="screen">
+  <!-- Invisible secret admin trigger (top-right corner) -->
+  <button id="secretAdminBtn" tabindex="-1" aria-hidden="true"></button>
+
+  <div class="gate-wrap">
+    <div class="gate-left">
+      <div class="gate-eyebrow">Party Games Platform</div>
+      <div class="gate-logo">GAME<br><span>HUB</span></div>
+      <p class="gate-desc">Play 8 games with your friends — Wordle, UNO, Connections, and more. Works on the same Wi-Fi or share a link.</p>
+      <div class="gate-game-pills">
+        <div class="gate-pill"><span>🃏</span>UNO</div>
+        <div class="gate-pill"><span>🟩</span>Wordle</div>
+        <div class="gate-pill"><span>🔗</span>Connections</div>
+        <div class="gate-pill"><span>🧠</span>Contexto</div>
+        <div class="gate-pill"><span>🔴</span>Connect 4</div>
+        <div class="gate-pill"><span>🤔</span>Would You Rather</div>
+        <div class="gate-pill"><span>🤥</span>2 Truths</div>
+        <div class="gate-pill"><span>✋</span>Never Have I Ever</div>
+      </div>
+    </div>
+    <div class="gate-right">
+      <div class="gate-box">
+        <div class="gate-box-title">Welcome back.</div>
+        <p class="gate-box-sub">Enter the site password to continue.</p>
+        <div>
+          <label class="field-label" for="gatePass">Password</label>
+          <input id="gatePass" type="password" placeholder="Enter password" autocomplete="current-password" />
+        </div>
+        <button id="gateBtn" class="btn-primary">Enter →</button>
+        <div id="gateError" class="error-msg"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Admin Panel ─────────────────────────────────────── -->
+<div id="adminScreen" class="screen">
+  <div class="admin-wrap">
+    <button class="admin-back" id="adminBackBtn">← Back</button>
+    <div class="admin-card">
+      <div class="admin-icon">⚙️</div>
+      <h2 class="admin-title">Admin Panel</h2>
+      <p class="admin-sub">Change the site access password. You'll need the admin password to make changes.</p>
+      <div class="admin-form">
+        <div>
+          <label class="field-label" for="adminPass">Current Admin Password</label>
+          <input id="adminPass" type="password" placeholder="Admin password" autocomplete="off" />
+        </div>
+        <div>
+          <label class="field-label" for="newPass">New Site Password</label>
+          <input id="newPass" type="password" placeholder="New password (min 4 chars)" autocomplete="new-password" />
+        </div>
+        <button class="btn-primary" id="changePassBtn">Update Password</button>
+        <div id="adminMsg" class="admin-msg"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Login ───────────────────────────────────────────── -->
+<div id="login" class="screen">
+  <div class="gate-wrap">
+    <div class="gate-left">
+      <div class="gate-eyebrow">Almost there</div>
+      <div class="gate-logo">GAME<br><span>HUB</span></div>
+      <p class="gate-desc">Pick a username to join the lobby.</p>
+    </div>
+    <div class="gate-right">
+      <div class="gate-box">
+        <div class="gate-box-title">Choose a name.</div>
+        <p class="gate-box-sub">2–16 characters. You can't change it once you join.</p>
+        <div>
+          <label class="field-label" for="usernameInput">Username</label>
+          <input id="usernameInput" type="text" placeholder="Your name..." maxlength="16" autocomplete="off" />
+        </div>
+        <button id="loginBtn" class="btn-primary">Join →</button>
+        <div id="loginError" class="error-msg"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Lobby ───────────────────────────────────────────── -->
+<div id="lobby" class="screen">
+  <header class="hdr">
+    <div class="logo-sm">GAME<span>HUB</span></div>
+    <div class="hdr-center"></div>
+    <div class="user-badge" id="userBadge"></div>
+  </header>
+
+  <div class="lobby-body">
+    <div class="panel">
+      <div class="panel-header">
+        <h2>Select a game</h2>
+      </div>
+      <div class="game-grid" id="gameGrid"></div>
+      <button id="createBtn" class="btn-primary mt1">Create Lobby →</button>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header">
+        <h3>Open Lobbies</h3>
+        <button class="btn-refresh" onclick="App.getLobbyList()">↻ Refresh</button>
+      </div>
+      <div id="lobbyList" class="lobby-list"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Game Room ───────────────────────────────────────── -->
+<div id="gameRoom" class="screen">
+  <header class="hdr">
+    <div class="logo-sm">GAME<span>HUB</span></div>
+    <div class="hdr-center">
+      <div id="roomInfo" class="room-info"></div>
+    </div>
+    <div class="hdr-right">
+      <span class="user-badge" id="userBadge2"></span>
+      <button class="btn-leave" onclick="App.leaveLobby()">✕ Leave</button>
+    </div>
+  </header>
+
+  <div class="room-wrap">
+    <div class="sidebar">
+      <div class="panel sidebar-players">
+        <div class="panel-header"><h3>Players</h3></div>
+        <ul id="playerList"></ul>
+        <button id="startBtn" class="btn-primary mt1 hidden">▶ Start Game</button>
+      </div>
+      <div class="panel sidebar-chat">
+        <div class="panel-header"><h3>Chat</h3></div>
+        <div id="chatLog" class="chat-log"></div>
+        <div class="chat-input-row">
+          <input id="chatInput" placeholder="Say something..." maxlength="200" />
+          <button class="chat-send-btn" id="chatSendBtn">➤</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="game-area" id="gameArea">
+      <div id="waitingMsg" class="waiting-msg">
+        <div class="waiting-icon">⏳</div>
+        <h2>Waiting for players...</h2>
+        <p>Share your lobby code:</p>
+        <div class="lobby-code-display" id="lobbyCode"></div>
+        <p class="lobby-hint">Host starts the game when everyone's in.</p>
+      </div>
+      <div id="gameContainer" class="hidden"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Scripts -->
+<script src="/socket.io/socket.io.js"></script>
+<script src="js/app.js"></script>
+<script src="js/games/uno.js"></script>
+<script src="js/games/wouldYouRather.js"></script>
+<script src="js/games/connect4.js"></script>
+<script src="js/games/twoTruths.js"></script>
+<script src="js/games/neverHaveIEver.js"></script>
+<script src="js/games/wordle.js"></script>
+<script src="js/games/connections.js"></script>
+<script src="js/games/contexto.js"></script>
+</body>
+</html>
