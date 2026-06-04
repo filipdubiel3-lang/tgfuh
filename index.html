@@ -2908,7 +2908,223 @@ window.ContextoUI = (() => {
 })();
 </script>
 
-<script src="js/app.js"></script>
+<script>
+// ─── Goon Room — app.js (inlined) ────────────────────────────────────────────
+(function () {
+
+  const GAMES = [
+    { key: "uno",            name: "UNO",               icon: "🃏", players: "2–4", ui: () => window.UnoUI },
+    { key: "wordle",         name: "Wordle",             icon: "🟩", players: "1–8", ui: () => window.WordleUI },
+    { key: "connections",    name: "Connections",        icon: "🔗", players: "1–8", ui: () => window.ConnectionsUI },
+    { key: "contexto",       name: "Contexto",           icon: "💬", players: "1–8", ui: () => window.ContextoUI },
+    { key: "connect4",       name: "Connect 4",          icon: "🔴", players: "2",   ui: () => window.Connect4UI },
+    { key: "twoTruths",      name: "Two Truths & a Lie", icon: "🤥", players: "3+",  ui: () => window.TwoTruthsUI },
+    { key: "neverHaveIEver", name: "Never Have I Ever",  icon: "✋", players: "2+",  ui: () => window.NeverHaveIEverUI },
+    { key: "wouldYouRather", name: "Would You Rather",   icon: "🤔", players: "2+",  ui: () => window.WouldYouRatherUI },
+  ];
+
+  let socket        = null;
+  let myId          = null;
+  let myName        = "";
+  let currentRoomId = null;
+  let selectedGame  = GAMES[0].key;
+  let isHost        = false;
+  let activeGameUI  = null;
+
+  function showScreen(id) {
+    document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
+    document.getElementById(id).classList.add("active");
+  }
+  window.showScreen = showScreen;
+
+  function setLoginError(msg) {
+    const el = document.getElementById("loginError");
+    if (el) el.textContent = msg;
+  }
+
+  function appendChat(text, cls) {
+    const log = document.getElementById("chatLog");
+    if (!log) return;
+    const div = document.createElement("div");
+    div.className = "chat-msg" + (cls ? " " + cls : "");
+    div.textContent = text;
+    log.appendChild(div);
+    log.scrollTop = log.scrollHeight;
+  }
+
+  function buildGameGrid() {
+    const grid = document.getElementById("gameGrid");
+    if (!grid) return;
+    grid.innerHTML = "";
+    GAMES.forEach(g => {
+      const card = document.createElement("div");
+      card.className = "game-card" + (g.key === selectedGame ? " selected" : "");
+      card.innerHTML = `<span class="game-card-icon">${g.icon}</span><div class="game-card-name">${g.name}</div><div class="game-card-players">${g.players} players</div>`;
+      card.addEventListener("click", () => {
+        selectedGame = g.key;
+        document.querySelectorAll(".game-card").forEach(c => c.classList.remove("selected"));
+        card.classList.add("selected");
+      });
+      grid.appendChild(card);
+    });
+  }
+
+  function getLobbyList() { if (socket) socket.emit("getLobbyList"); }
+  window.App = window.App || {};
+  window.App.getLobbyList = getLobbyList;
+
+  function renderLobbyList(rooms) {
+    const el = document.getElementById("lobbyList");
+    if (!el) return;
+    if (!rooms || rooms.length === 0) { el.innerHTML = "<div class="room-empty">No open rooms yet.</div>"; return; }
+    el.innerHTML = "";
+    rooms.forEach(room => {
+      const div = document.createElement("div");
+      div.className = "room-item";
+      const gameInfo = GAMES.find(g => g.key === room.game) || { name: room.game, icon: "🎮" };
+      div.innerHTML = `<div class="room-item-info"><span class="room-item-icon">${gameInfo.icon}</span><span class="room-item-name">${gameInfo.name}</span><span class="room-item-code">#${room.code}</span></div><div class="room-item-meta">${room.playerCount} player${room.playerCount !== 1 ? "s" : ""}</div>`;
+      div.addEventListener("click", () => joinRoom(room.id));
+      el.appendChild(div);
+    });
+  }
+
+  function createRoom() { if (socket) socket.emit("createRoom", { game: selectedGame }); }
+  function joinRoom(roomId) { if (socket) socket.emit("joinRoom", { roomId }); }
+
+  function leaveLobby() {
+    if (socket) socket.emit("leaveRoom");
+    activeGameUI = null; currentRoomId = null; isHost = false;
+    const gc = document.getElementById("gameContainer");
+    const wm = document.getElementById("waitingMsg");
+    if (gc) { gc.innerHTML = ""; gc.classList.add("hidden"); }
+    if (wm) wm.classList.remove("hidden");
+    showScreen("lobby");
+    getLobbyList();
+  }
+  window.App.leaveLobby = leaveLobby;
+
+  function renderPlayers(players, hostId) {
+    const list = document.getElementById("playerList");
+    if (!list) return;
+    list.innerHTML = "";
+    (players || []).forEach(p => {
+      const li = document.createElement("li");
+      li.className = "player-item" + (p.id === myId ? " me" : "");
+      li.textContent = p.name + (p.id === hostId ? " ★" : "");
+      list.appendChild(li);
+    });
+  }
+
+  function showStartBtn(visible) {
+    const btn = document.getElementById("startBtn");
+    if (btn) btn.classList.toggle("hidden", !visible);
+  }
+
+  function launchGameUI(gameKey) {
+    const game    = GAMES.find(g => g.key === gameKey);
+    const UIFn    = game ? game.ui() : null;
+    const area    = document.getElementById("gameContainer");
+    const waiting = document.getElementById("waitingMsg");
+    if (!area) return;
+    if (waiting) waiting.classList.add("hidden");
+    area.classList.remove("hidden");
+    area.innerHTML = "";
+    if (UIFn && typeof UIFn.init === "function") {
+      activeGameUI = UIFn.init(area, socket, myId);
+    } else {
+      area.innerHTML = `<div class="waiting-msg"><div class="waiting-icon">🎮</div><h2>${game ? game.name : gameKey}</h2><p>Game UI coming soon…</p></div>`;
+    }
+  }
+
+  function connectSocket() {
+    socket = io();
+    socket.on("connect", () => { myId = socket.id; });
+    socket.on("disconnect", () => { appendChat("Disconnected from server.", "sys"); });
+
+    socket.on("joinedLobby", (data) => {
+      myId = data.id || socket.id;
+      myName = data.name || myName;
+      const badge  = document.getElementById("userBadge");
+      const badge2 = document.getElementById("userBadge2");
+      if (badge)  badge.textContent  = myName;
+      if (badge2) badge2.textContent = myName;
+      buildGameGrid();
+      getLobbyList();
+      showScreen("lobby");
+    });
+
+    socket.on("loginError", (msg) => { setLoginError(typeof msg === "string" ? msg : "Could not join. Try again."); });
+    socket.on("lobbyList",  (rooms) => { renderLobbyList(rooms); });
+
+    socket.on("roomJoined", (data) => {
+      currentRoomId = data.roomId;
+      isHost = data.hostId === myId;
+      const info = document.getElementById("roomInfo");
+      const code = document.getElementById("lobbyCode");
+      if (info) info.textContent = `#${data.code}`;
+      if (code) code.textContent = data.code;
+      renderPlayers(data.players, data.hostId);
+      showStartBtn(isHost);
+      const gc = document.getElementById("gameContainer");
+      const wm = document.getElementById("waitingMsg");
+      if (gc) { gc.innerHTML = ""; gc.classList.add("hidden"); }
+      if (wm) wm.classList.remove("hidden");
+      activeGameUI = null;
+      showScreen("gameRoom");
+      appendChat(`Joined room #${data.code}`, "sys");
+    });
+
+    socket.on("roomError",   (msg) => { alert(typeof msg === "string" ? msg : "Could not join room."); });
+    socket.on("roomUpdate",  (data) => { isHost = data.hostId === myId; renderPlayers(data.players, data.hostId); showStartBtn(isHost); });
+    socket.on("gameStarted", (data) => { launchGameUI(data.game); });
+    socket.on("gameState",   (state) => { if (activeGameUI && typeof activeGameUI.onState === "function") activeGameUI.onState(state); });
+    socket.on("gameFinished",(result) => { if (activeGameUI && typeof activeGameUI.onFinish === "function") activeGameUI.onFinish(result); });
+    socket.on("gameError",   (msg) => { if (activeGameUI && typeof activeGameUI.onError === "function") activeGameUI.onError(typeof msg === "string" ? msg : "An error occurred."); });
+    socket.on("chatMessage", (data) => { appendChat(`${data.name}: ${data.text}`); });
+    socket.on("systemMessage", (text) => { appendChat(text, "sys"); });
+  }
+
+  function tryLogin() {
+    const input = document.getElementById("usernameInput");
+    const name  = (input ? input.value : "").trim();
+    if (!name) { setLoginError("Please enter your name."); return; }
+    if (name.length < 2) { setLoginError("Name must be at least 2 characters."); return; }
+    setLoginError("");
+    myName = name;
+    if (!socket) connectSocket();
+    if (socket.connected) {
+      socket.emit("joinLobby", { name });
+    } else {
+      socket.once("connect", () => socket.emit("joinLobby", { name }));
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", () => {
+    const loginBtn  = document.getElementById("loginBtn");
+    const userInput = document.getElementById("usernameInput");
+    if (loginBtn)  loginBtn.addEventListener("click", tryLogin);
+    if (userInput) userInput.addEventListener("keydown", e => { if (e.key === "Enter") tryLogin(); });
+
+    const createBtn = document.getElementById("createBtn");
+    if (createBtn) createBtn.addEventListener("click", createRoom);
+
+    const startBtn = document.getElementById("startBtn");
+    if (startBtn) startBtn.addEventListener("click", () => { if (socket) socket.emit("startGame"); });
+
+    const chatSend  = document.getElementById("chatSendBtn");
+    const chatInput = document.getElementById("chatInput");
+    function sendChat() {
+      const text = (chatInput ? chatInput.value : "").trim();
+      if (!text || !socket) return;
+      socket.emit("chatMessage", { text });
+      chatInput.value = "";
+    }
+    if (chatSend)  chatSend.addEventListener("click", sendChat);
+    if (chatInput) chatInput.addEventListener("keydown", e => { if (e.key === "Enter") sendChat(); });
+  });
+
+})();
+</script>
 
 </body>
 </html>
